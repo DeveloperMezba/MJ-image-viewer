@@ -107,5 +107,5 @@ To update to the latest version:
 
 ## 👨‍💻 Author & License
 
-- **Developer:** [Mezba](https://github.com/DeveloperMezba)
+- **Developer:** [DeveloperMezba](https://github.com/DeveloperMezba)
 - **GitHub Repository:** [https://github.com/DeveloperMezba/MJ-image-viewer](https://github.com/DeveloperMezba/MJ-image-viewer)
