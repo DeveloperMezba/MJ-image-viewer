@@ -9,13 +9,14 @@ from PIL import Image
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QFileDialog, QMessageBox, QFrame,
-    QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QMenu, QDialog
+    QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QMenu, QDialog,
+    QComboBox, QListWidget, QGroupBox
 )
 from PyQt6.QtGui import QPixmap, QImage, QKeySequence, QShortcut, QAction, QPainter
 from PyQt6.QtCore import Qt
 
 # Metadata & GitHub Auto-Update Configuration
-CURRENT_VERSION = "v1.0.2"
+CURRENT_VERSION = "v1.0.3"
 DEVELOPER_NAME = "Mezba"
 GITHUB_REPO_URL = "https://api.github.com/repos/DeveloperMezba/MJ-image-viewer/releases/latest"
 RAW_SCRIPT_URL = "https://raw.githubusercontent.com/DeveloperMezba/MJ-image-viewer/main/mj_viewer_app.py"
@@ -52,6 +53,156 @@ class SmoothGraphicsView(QGraphicsView):
             self.scale(zoom_out_factor, zoom_out_factor)
 
 
+class ConverterDialog(QDialog):
+    """
+    Popup dialog window supporting single/multiple file conversions between .mj and standard formats.
+    """
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("MJ Universal Image Converter")
+        self.resize(500, 380)
+        self.setStyleSheet("""
+            QDialog { background-color: #2b2b3b; color: #eceff4; }
+            QLabel { color: #d8dee9; font-weight: bold; font-size: 13px; }
+            QPushButton {
+                background-color: #3b4252; color: #eceff4;
+                border: 1px solid #4c566a; padding: 7px 14px;
+                border-radius: 6px; font-weight: bold;
+            }
+            QPushButton:hover { background-color: #434c5e; }
+            QPushButton#btnConvert {
+                background-color: #5e81ac; color: #ffffff; font-size: 14px;
+            }
+            QPushButton#btnConvert:hover { background-color: #81a1c1; }
+            QComboBox {
+                background-color: #3b4252; color: #eceff4;
+                border: 1px solid #4c566a; padding: 6px; border-radius: 6px;
+            }
+            QListWidget {
+                background-color: #1e1e2e; color: #a3be8c;
+                border: 1px solid #3b3b4b; border-radius: 6px; padding: 5px;
+            }
+        """)
+        self.selected_files = []
+        self.init_ui()
+
+    def init_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setSpacing(12)
+
+        # File Selection Area
+        file_group = QGroupBox("1. Select Images (Multiple Selection Allowed)")
+        file_group.setStyleSheet("QGroupBox { color: #88c0d0; font-weight: bold; border: 1px solid #4c566a; margin-top: 6px; padding-top: 10px; }")
+        fg_layout = QVBoxLayout(file_group)
+
+        btn_browse = QPushButton("📁 Choose Input Files...")
+        btn_browse.clicked.connect(self.browse_files)
+        fg_layout.addWidget(btn_browse)
+
+        self.list_files = QListWidget()
+        fg_layout.addWidget(self.list_files)
+
+        layout.addWidget(file_group)
+
+        # Target Format Selector
+        fmt_group = QGroupBox("2. Target Output Format")
+        fmt_group.setStyleSheet("QGroupBox { color: #88c0d0; font-weight: bold; border: 1px solid #4c566a; margin-top: 6px; padding-top: 10px; }")
+        fmt_layout = QHBoxLayout(fmt_group)
+
+        lbl_format = QLabel("Convert To:")
+        self.combo_target = QComboBox()
+        self.combo_target.addItems([".jpg", ".mj", ".png", ".jpeg", ".webp", ".bmp"])
+        
+        fmt_layout.addWidget(lbl_format)
+        fmt_layout.addWidget(self.combo_target)
+        fmt_layout.addStretch()
+
+        layout.addWidget(fmt_group)
+
+        # Convert Action Button
+        self.btn_convert = QPushButton("🚀 Start Conversion")
+        self.btn_convert.setObjectName("btnConvert")
+        self.btn_convert.clicked.connect(self.process_conversion)
+        layout.addWidget(self.btn_convert)
+
+    def browse_files(self):
+        files, _ = QFileDialog.getOpenFileNames(
+            self,
+            "Select Images for Conversion",
+            "",
+            "All Supported Images (*.mj *.png *.jpg *.jpeg *.webp *.bmp *.gif);;MJ Images (*.mj);;Standard Images (*.png *.jpg *.jpeg *.webp *.bmp *.gif)"
+        )
+        if files:
+            self.selected_files = files
+            self.list_files.clear()
+            for f in files:
+                self.list_files.addItem(os.path.basename(f))
+
+    def process_conversion(self):
+        if not self.selected_files:
+            QMessageBox.warning(self, "No Files Selected", "Please select at least one image file to convert.")
+            return
+
+        target_ext = self.combo_target.currentText().lower()
+        success_count = 0
+        error_count = 0
+
+        for file_path in self.selected_files:
+            try:
+                base_path = os.path.splitext(file_path)[0]
+                output_path = f"{base_path}_converted{target_ext}"
+                src_ext = os.path.splitext(file_path)[1].lower()
+
+                # 1. Decode Source Image
+                if src_ext == '.mj':
+                    img = self.decode_mj_file(file_path)
+                else:
+                    img = Image.open(file_path).convert('RGB')
+
+                # 2. Encode to Target Image
+                if target_ext == '.mj':
+                    self.encode_mj_file(img, output_path)
+                else:
+                    # JPG & JPEG require RGB mode
+                    if target_ext in ('.jpg', '.jpeg'):
+                        img = img.convert('RGB')
+                    img.save(output_path)
+
+                success_count += 1
+
+            except Exception as e:
+                error_count += 1
+
+        msg = f"Conversion finished!\n\nSuccessfully converted: {success_count} file(s)."
+        if error_count > 0:
+            msg += f"\nFailed: {error_count} file(s)."
+        
+        QMessageBox.information(self, "Conversion Complete", msg)
+        self.accept()
+
+    def decode_mj_file(self, file_path):
+        with open(file_path, 'rb') as f:
+            header = f.read(16)
+            if len(header) < 16:
+                raise ValueError("Header missing or corrupted.")
+            magic, width, height = struct.unpack('>8sII', header)
+            if magic != b'MJFORMAT':
+                raise ValueError("Not a valid .mj format!")
+            encrypted_data = f.read()
+        decrypted_pixels = bytes(b ^ SECRET_KEY for b in encrypted_data)
+        return Image.frombytes('RGB', (width, height), decrypted_pixels)
+
+    def encode_mj_file(self, img, output_path):
+        img = img.convert('RGB')
+        width, height = img.size
+        raw_pixels = bytearray(img.tobytes())
+        encrypted_pixels = bytearray(b ^ SECRET_KEY for b in raw_pixels)
+        header = struct.pack('>8sII', b'MJFORMAT', width, height)
+        with open(output_path, 'wb') as f:
+            f.write(header)
+            f.write(encrypted_pixels)
+
+
 class MJApp(QMainWindow):
     def __init__(self, initial_file=None):
         super().__init__()
@@ -75,30 +226,22 @@ class MJApp(QMainWindow):
             QMainWindow { background-color: #1e1e2e; }
             QFrame#topBar { background-color: #2b2b3b; border-bottom: 1px solid #3b3b4b; }
             QPushButton {
-                background-color: #3b4252;
-                color: #eceff4;
-                border: 1px solid #4c566a;
-                padding: 6px 12px;
-                border-radius: 6px;
-                font-size: 13px;
-                font-weight: bold;
+                background-color: #3b4252; color: #eceff4;
+                border: 1px solid #4c566a; padding: 6px 12px;
+                border-radius: 6px; font-size: 13px; font-weight: bold;
             }
             QPushButton:hover { background-color: #434c5e; }
             QPushButton:pressed { background-color: #5e81ac; }
             QPushButton:disabled { background-color: #2e3440; color: #4c566a; border-color: #3b3b4b; }
             QMenu {
-                background-color: #2b2b3b;
-                color: #eceff4;
-                border: 1px solid #4c566a;
-                padding: 5px;
+                background-color: #2b2b3b; color: #eceff4;
+                border: 1px solid #4c566a; padding: 5px;
             }
             QMenu::item {
-                padding: 8px 25px 8px 15px;
-                border-radius: 4px;
+                padding: 8px 25px 8px 15px; border-radius: 4px;
             }
             QMenu::item:selected {
-                background-color: #5e81ac;
-                color: #ffffff;
+                background-color: #5e81ac; color: #ffffff;
             }
             QLabel { color: #d8dee9; }
         """)
@@ -174,11 +317,12 @@ class MJApp(QMainWindow):
 
         self.options_menu.addSeparator()
 
-        action_convert = QAction("🔄 Convert Image to .mj", self)
-        action_convert.triggered.connect(self.convert_image_dialog)
+        # New Integrated Popup Converter (Supports .mj to .jpg/png/etc & vice versa)
+        action_convert = QAction("🔄 Image Converter...", self)
+        action_convert.triggered.connect(self.open_converter_dialog)
         self.options_menu.addAction(action_convert)
 
-        action_save_as = QAction("💾 Save / Export As...", self)
+        action_save_as = QAction("💾 Save / Export Current Image As...", self)
         action_save_as.triggered.connect(self.export_image_dialog)
         self.options_menu.addAction(action_save_as)
 
@@ -209,6 +353,10 @@ class MJApp(QMainWindow):
         QShortcut(QKeySequence(Qt.Key.Key_Left), self, self.show_prev_image)
         QShortcut(QKeySequence(Qt.Key.Key_Right), self, self.show_next_image)
         QShortcut(QKeySequence(Qt.Key.Key_R), self, self.rotate_image)
+
+    def open_converter_dialog(self):
+        dlg = ConverterDialog(self)
+        dlg.exec()
 
     def rotate_image(self):
         if self.current_file_path:
@@ -247,18 +395,6 @@ class MJApp(QMainWindow):
         decrypted_pixels = bytes(b ^ SECRET_KEY for b in encrypted_data)
         return Image.frombytes('RGB', (width, height), decrypted_pixels), width, height
 
-    def encode_to_mj(self, input_path, output_path):
-        img = Image.open(input_path).convert('RGB')
-        width, height = img.size
-        raw_pixels = bytearray(img.tobytes())
-
-        encrypted_pixels = bytearray(b ^ SECRET_KEY for b in raw_pixels)
-        header = struct.pack('>8sII', b'MJFORMAT', width, height)
-
-        with open(output_path, 'wb') as f:
-            f.write(header)
-            f.write(encrypted_pixels)
-
     def open_file_dialog(self):
         file_path, _ = QFileDialog.getOpenFileName(
             self,
@@ -284,31 +420,6 @@ class MJApp(QMainWindow):
             else:
                 QMessageBox.information(self, "No Images", "No supported images found in this folder.")
 
-    def convert_image_dialog(self):
-        file_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Select Image to Convert to .MJ",
-            "",
-            "Standard Images (*.png *.jpg *.jpeg *.webp *.bmp *.gif);;All Files (*)"
-        )
-        if not file_path:
-            return
-
-        base_name = os.path.splitext(file_path)[0]
-        default_output = base_name + ".mj"
-
-        try:
-            self.encode_to_mj(file_path, default_output)
-            QMessageBox.information(
-                self, 
-                "Conversion Successful", 
-                f"Successfully converted to .mj format!\n\nSaved at:\n{default_output}"
-            )
-            self.load_file(default_output)
-
-        except Exception as e:
-            QMessageBox.critical(self, "Conversion Error", f"Failed to convert image:\n{str(e)}")
-
     def export_image_dialog(self):
         if not self.loaded_pil_image:
             QMessageBox.warning(self, "Export Error", "No image loaded to export.")
@@ -318,7 +429,7 @@ class MJApp(QMainWindow):
             self,
             "Export Image As",
             "",
-            "PNG Image (*.png);;JPEG Image (*.jpg *.jpeg);;BMP Image (*.bmp)"
+            "JPEG Image (*.jpg *.jpeg);;PNG Image (*.png);;BMP Image (*.bmp)"
         )
         if save_path:
             try:
@@ -434,7 +545,7 @@ class MJApp(QMainWindow):
         msg_box.exec()
 
     # ==============================================================================
-    # ABOUT & GITHUB AUTO-UPDATE SYSTEM (WITH CACHE BYPASS)
+    # ABOUT & AUTO-UPDATE SYSTEM WITH CACHE-BYPASS
     # ==============================================================================
     def show_about_dialog(self):
         dialog = QDialog(self)
@@ -456,11 +567,8 @@ class MJApp(QMainWindow):
         btn_update = QPushButton("🚀 Check for Updates")
         btn_update.setStyleSheet("""
             QPushButton {
-                background-color: #5e81ac;
-                color: white;
-                font-weight: bold;
-                padding: 8px;
-                border-radius: 5px;
+                background-color: #5e81ac; color: white;
+                font-weight: bold; padding: 8px; border-radius: 5px;
             }
             QPushButton:hover { background-color: #81a1c1; }
         """)
@@ -471,7 +579,7 @@ class MJApp(QMainWindow):
 
     def check_for_updates(self):
         try:
-            # Timestamp যোগ করে GitHub API এর ক্যাশ ফিক্স করা
+            # Bypass GitHub Cache
             cache_url = f"{GITHUB_REPO_URL}?t={int(time.time())}"
             req = urllib.request.Request(cache_url, headers={'User-Agent': 'Mozilla/5.0', 'Cache-Control': 'no-cache'})
             with urllib.request.urlopen(req) as response:
@@ -496,7 +604,7 @@ class MJApp(QMainWindow):
     def perform_auto_update(self):
         try:
             script_path = os.path.realpath(__file__)
-            # Timestamp যোগ করে RAW Python ফাইলের ক্যাশ ফিক্স করা
+            # Bypass RAW content Cache
             bypass_raw_url = f"{RAW_SCRIPT_URL}?t={int(time.time())}"
             
             req = urllib.request.Request(bypass_raw_url, headers={'User-Agent': 'Mozilla/5.0', 'Cache-Control': 'no-cache'})
