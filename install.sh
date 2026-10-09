@@ -22,17 +22,11 @@ INSTALL_DIR="$HOME/MJ_Viewer"
 echo "[2/4] Setting up installation directory at $INSTALL_DIR..."
 mkdir -p "$INSTALL_DIR"
 
-# ৩. গিটহাব থেকে সরাসরি mj_viewer_app.py ডাউনলোড
-RAW_PY_URL="https://raw.githubusercontent.com/DeveloperMezba/MJ-image-viewer/main/mj_viewer_app.py"
+# ৩. ক্যাশ বাইপাস করে গিটহাব থেকে সরাসরি mj_viewer_app.py ডাউনলোড
+RAW_PY_URL="https://raw.githubusercontent.com/DeveloperMezba/MJ-image-viewer/main/mj_viewer_app.py?v=$(date +%s)"
 echo "[3/4] Downloading mj_viewer_app.py from GitHub..."
 
-# যদি ফাইলটি লোকাল ফোল্ডারে থাকে তবে কপি করবে, তা না হলে গিটহাব থেকে ডাউনলোড করবে
-if [ -f "mj_viewer_app.py" ]; then
-    cp mj_viewer_app.py "$INSTALL_DIR/mj_viewer_app.py"
-else
-    curl -sSL "$RAW_PY_URL" -o "$INSTALL_DIR/mj_viewer_app.py"
-fi
-
+curl -sSL "$RAW_PY_URL" -o "$INSTALL_DIR/mj_viewer_app.py"
 chmod +x "$INSTALL_DIR/mj_viewer_app.py"
 
 # ৪. ডেস্কটপ লঞ্চার ও ফাইল ফরম্যাট অ্যাসোসিয়েশন তৈরি
