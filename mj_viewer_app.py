@@ -14,13 +14,42 @@ from PyQt6.QtGui import QPixmap, QImage, QKeySequence, QShortcut, QAction, QPain
 from PyQt6.QtCore import Qt
 
 # Metadata & GitHub Auto-Update Configuration
-CURRENT_VERSION = "v1.0.1"
+CURRENT_VERSION = "v1.0.2"
 DEVELOPER_NAME = "Mezba"
 GITHUB_REPO_URL = "https://api.github.com/repos/DeveloperMezba/MJ-image-viewer/releases/latest"
 RAW_SCRIPT_URL = "https://raw.githubusercontent.com/DeveloperMezba/MJ-image-viewer/main/mj_viewer_app.py"
 
 SECRET_KEY = 0x5A
 SUPPORTED_EXTENSIONS = ('.mj', '.png', '.jpg', '.jpeg', '.webp', '.bmp', '.gif')
+
+class SmoothGraphicsView(QGraphicsView):
+    """
+    Custom QGraphicsView with smooth, mouse-centered zooming and grab-hand panning.
+    """
+    def __init__(self, scene, parent=None):
+        super().__init__(scene, parent)
+        self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+        self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        
+        self.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        self.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+
+    def wheelEvent(self, event):
+        if not self.scene() or not self.scene().items():
+            super().wheelEvent(event)
+            return
+
+        zoom_in_factor = 1.12
+        zoom_out_factor = 1 / zoom_in_factor
+
+        if event.angleDelta().y() > 0:
+            self.scale(zoom_in_factor, zoom_in_factor)
+        elif event.angleDelta().y() < 0:
+            self.scale(zoom_out_factor, zoom_out_factor)
+
 
 class MJApp(QMainWindow):
     def __init__(self, initial_file=None):
@@ -29,9 +58,8 @@ class MJApp(QMainWindow):
         self.folder_files = []
         self.current_index = -1
         self.image_info = {}
-        self.zoom_factor = 1.15
         self.loaded_pil_image = None
-        self.current_rotation = 0  # রোটেশন ডিগ্রি ট্র্যাকিং
+        self.current_rotation = 0
 
         self.init_ui()
 
@@ -107,7 +135,6 @@ class MJApp(QMainWindow):
 
         top_layout.addStretch()
 
-        # Zoom & Rotate Controls
         self.btn_rotate = QPushButton("🔄 Rotate")
         self.btn_rotate.setToolTip("Rotate view 90° Right (Shortcut: R)")
         self.btn_rotate.clicked.connect(self.rotate_image)
@@ -169,49 +196,33 @@ class MJApp(QMainWindow):
 
         main_layout.addWidget(top_bar)
 
-        # Canvas with Anti-Aliasing
         self.scene = QGraphicsScene(self)
-        self.view = QGraphicsView(self.scene)
+        self.view = SmoothGraphicsView(self.scene, self)
         self.view.setStyleSheet("background-color: #11111b; border: none;")
-        self.view.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
-        self.view.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
-        
-        self.view.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        self.view.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
         
         self.pixmap_item = QGraphicsPixmapItem()
         self.scene.addItem(self.pixmap_item)
 
         main_layout.addWidget(self.view)
 
-        # Shortcuts
         QShortcut(QKeySequence(Qt.Key.Key_Left), self, self.show_prev_image)
         QShortcut(QKeySequence(Qt.Key.Key_Right), self, self.show_next_image)
         QShortcut(QKeySequence(Qt.Key.Key_R), self, self.rotate_image)
-
-    def wheelEvent(self, event):
-        if not self.current_file_path:
-            return
-        if event.angleDelta().y() > 0:
-            self.zoom_in()
-        else:
-            self.zoom_out()
 
     def rotate_image(self):
         if self.current_file_path:
             self.current_rotation = (self.current_rotation + 90) % 360
             self.pixmap_item.setRotation(self.current_rotation)
-            # সেন্টারিং ঠিক রাখা
             self.scene.setSceneRect(self.pixmap_item.boundingRect())
             self.view.fitInView(self.pixmap_item, Qt.AspectRatioMode.KeepAspectRatio)
 
     def zoom_in(self):
         if self.current_file_path:
-            self.view.scale(self.zoom_factor, self.zoom_factor)
+            self.view.scale(1.15, 1.15)
 
     def zoom_out(self):
         if self.current_file_path:
-            self.view.scale(1 / self.zoom_factor, 1 / self.zoom_factor)
+            self.view.scale(1 / 1.15, 1 / 1.15)
 
     def reset_zoom(self):
         if self.current_file_path:
@@ -366,7 +377,7 @@ class MJApp(QMainWindow):
 
             self.loaded_pil_image = img
             self.current_file_path = file_path
-            self.current_rotation = 0  # নতুন ছবি লোড হলে রোটেশন ০ হবে
+            self.current_rotation = 0
 
             data = img.tobytes("raw", "RGB")
             qimg = QImage(data, width, height, width * 3, QImage.Format.Format_RGB888)
@@ -375,7 +386,6 @@ class MJApp(QMainWindow):
             self.pixmap_item.setPixmap(pixmap)
             self.pixmap_item.setRotation(0)
             
-            # ট্রান্সফর্ম সেন্টার নির্ধারণ
             self.pixmap_item.setTransformOriginPoint(width / 2, height / 2)
             self.scene.setSceneRect(0, 0, width, height)
             self.view.resetTransform()
@@ -423,7 +433,7 @@ class MJApp(QMainWindow):
         msg_box.exec()
 
     # ==============================================================================
-    # ABOUT & GITHUB AUTO-UPDATE SYSTEM FOR DEVELOPER MEZBA
+    # FIXED GITHUB AUTO-UPDATE SYSTEM
     # ==============================================================================
     def show_about_dialog(self):
         dialog = QDialog(self)
@@ -478,20 +488,37 @@ class MJApp(QMainWindow):
                     else:
                         QMessageBox.information(self, "No Updates", f"You are using the latest version ({CURRENT_VERSION}).")
         except Exception as e:
-            QMessageBox.warning(self, "Update Check", f"Could not check for updates.\nNote: Make sure a release tag (e.g. v1.0.1) is created on GitHub Releases.\nError: {str(e)}")
+            QMessageBox.warning(self, "Update Check", f"Could not check for updates:\n{str(e)}")
 
     def perform_auto_update(self):
         try:
-            script_path = os.path.abspath(__file__)
+            # ইনস্টলড ফাইলের অরিজিনাল প্যাথ শনাক্ত করা
+            script_path = os.path.realpath(__file__)
+            
             req = urllib.request.Request(RAW_SCRIPT_URL, headers={'User-Agent': 'Mozilla/5.0'})
             with urllib.request.urlopen(req) as response:
                 if response.status == 200:
                     new_code = response.read().decode('utf-8')
+                    
+                    # ১. ফাইল নিরাপদভাবে সেভ করা
                     with open(script_path, 'w', encoding='utf-8') as f:
                         f.write(new_code)
-                    QMessageBox.information(self, "Update Success", "MJ Image Viewer updated successfully! Please restart the app.")
+                    
+                    # ২. পারমিশন নিশ্চিত করা (Executable Permission)
+                    os.chmod(script_path, 0o755)
+
+                    QMessageBox.information(
+                        self, 
+                        "Update Successful", 
+                        "MJ Image Viewer has been updated successfully!\nClick OK to restart the application now."
+                    )
+                    
+                    # ৩. বর্তমান অ্যাপ বন্ধ করে নতুন কোড দিয়ে সাথে সাথে অ্যাপ রি-লঞ্চ করা
+                    python = sys.executable
+                    os.execv(python, [python, script_path] + sys.argv[1:])
+
         except Exception as e:
-            QMessageBox.critical(self, "Update Failed", f"Failed to perform auto update: {str(e)}")
+            QMessageBox.critical(self, "Update Failed", f"Failed to perform auto update:\n{str(e)}")
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
