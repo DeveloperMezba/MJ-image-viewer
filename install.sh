@@ -51,5 +51,5 @@ xdg-mime default mj_viewer.desktop image/x-mj
 
 echo "--------------------------------------------------------"
 echo " Installation Complete! App Name: MJ Image Viewer"
-echo " Developer: Mezba"
+echo " Developer: DeveloerMezba"
 echo "--------------------------------------------------------"
