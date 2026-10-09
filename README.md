@@ -1,7 +1,7 @@
 # 🖼️ MJ Image Viewer
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-1.0.1-blue.svg?style=for-the-badge" alt="Version 1.0.1">
+  <img src="https://img.shields.io/badge/Version-1.0.1-blue.svg?style=for-the-badge" alt="Version 1.0.2">
   <img src="https://img.shields.io/badge/Python-3.8%2B-brightgreen.svg?style=for-the-badge&logo=python" alt="Python 3.8+">
   <img src="https://img.shields.io/badge/GUI-PyQt6-orange.svg?style=for-the-badge&logo=qt" alt="PyQt6">
   <img src="https://img.shields.io/badge/Platform-Linux-lightgrey.svg?style=for-the-badge&logo=linux" alt="Linux">
