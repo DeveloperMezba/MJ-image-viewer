@@ -4,7 +4,7 @@
   <img src="https://img.shields.io/badge/Python-3.8%2B-brightgreen.svg?style=for-the-badge&logo=python" alt="Python 3.8+">
   <img src="https://img.shields.io/badge/GUI-PyQt6-orange.svg?style=for-the-badge&logo=qt" alt="PyQt6">
   <img src="https://img.shields.io/badge/Platform-Linux-lightgrey.svg?style=for-the-badge&logo=linux" alt="Linux">
-  <img src="https://img.shields.io/badge/Developer-Mezba-purple.svg?style=for-the-badge" alt="DeveloperMezba">
+  <img src="https://img.shields.io/badge/Developer-Mezba-purple.svg?style=for-the-badge" alt="Developer DeveloperMezba">
 </p>
 
 **MJ Image Viewer** is a fast, modern, and lightweight image viewer built with Python and PyQt6. It introduces support for a custom obfuscated image format (`.mj`), while offering seamless viewing, conversion, and inspection tools for standard image formats (`.png`, `.jpg`, `.jpeg`, `.webp`, `.bmp`, `.gif`).
