@@ -3,6 +3,8 @@ import os
 import struct
 import json
 import time
+import io
+import zlib
 import urllib.request
 from PIL import Image
 
@@ -16,7 +18,7 @@ from PyQt6.QtGui import QPixmap, QImage, QKeySequence, QShortcut, QAction, QPain
 from PyQt6.QtCore import Qt
 
 # Metadata & GitHub Auto-Update Configuration
-CURRENT_VERSION = "v1.0.3"
+CURRENT_VERSION = "v1.0.6"
 DEVELOPER_NAME = "Mezba"
 GITHUB_REPO_URL = "https://api.github.com/repos/DeveloperMezba/MJ-image-viewer/releases/latest"
 RAW_SCRIPT_URL = "https://raw.githubusercontent.com/DeveloperMezba/MJ-image-viewer/main/mj_viewer_app.py"
@@ -55,7 +57,7 @@ class SmoothGraphicsView(QGraphicsView):
 
 class ConverterDialog(QDialog):
     """
-    Popup dialog window supporting single/multiple file conversions between .mj and standard formats.
+    Popup dialog window supporting single/multiple file conversions with full backward compatibility.
     """
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -90,7 +92,6 @@ class ConverterDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.setSpacing(12)
 
-        # File Selection Area
         file_group = QGroupBox("1. Select Images (Multiple Selection Allowed)")
         file_group.setStyleSheet("QGroupBox { color: #88c0d0; font-weight: bold; border: 1px solid #4c566a; margin-top: 6px; padding-top: 10px; }")
         fg_layout = QVBoxLayout(file_group)
@@ -104,7 +105,6 @@ class ConverterDialog(QDialog):
 
         layout.addWidget(file_group)
 
-        # Target Format Selector
         fmt_group = QGroupBox("2. Target Output Format")
         fmt_group.setStyleSheet("QGroupBox { color: #88c0d0; font-weight: bold; border: 1px solid #4c566a; margin-top: 6px; padding-top: 10px; }")
         fmt_layout = QHBoxLayout(fmt_group)
@@ -119,7 +119,6 @@ class ConverterDialog(QDialog):
 
         layout.addWidget(fmt_group)
 
-        # Convert Action Button
         self.btn_convert = QPushButton("🚀 Start Conversion")
         self.btn_convert.setObjectName("btnConvert")
         self.btn_convert.clicked.connect(self.process_conversion)
@@ -153,17 +152,14 @@ class ConverterDialog(QDialog):
                 output_path = f"{base_path}_converted{target_ext}"
                 src_ext = os.path.splitext(file_path)[1].lower()
 
-                # 1. Decode Source Image
                 if src_ext == '.mj':
                     img = self.decode_mj_file(file_path)
                 else:
                     img = Image.open(file_path).convert('RGB')
 
-                # 2. Encode to Target Image
                 if target_ext == '.mj':
                     self.encode_mj_file(img, output_path)
                 else:
-                    # JPG & JPEG require RGB mode
                     if target_ext in ('.jpg', '.jpeg'):
                         img = img.convert('RGB')
                     img.save(output_path)
@@ -189,15 +185,37 @@ class ConverterDialog(QDialog):
             if magic != b'MJFORMAT':
                 raise ValueError("Not a valid .mj format!")
             encrypted_data = f.read()
-        decrypted_pixels = bytes(b ^ SECRET_KEY for b in encrypted_data)
-        return Image.frombytes('RGB', (width, height), decrypted_pixels)
+        
+        decrypted_data = bytes(b ^ SECRET_KEY for b in encrypted_data)
+
+        # 1. Try decoding as v1.0.5 WebP Stream
+        try:
+            buffer = io.BytesIO(decrypted_data)
+            return Image.open(buffer).convert('RGB')
+        except Exception:
+            pass
+
+        # 2. Try decoding as v1.0.4 zlib Compressed Bytes
+        try:
+            raw_pixels = zlib.decompress(decrypted_data)
+            return Image.frombytes('RGB', (width, height), raw_pixels)
+        except Exception:
+            pass
+
+        # 3. Fallback to v1.0.0 - v1.0.3 Legacy Uncompressed Raw RGB Pixels
+        return Image.frombytes('RGB', (width, height), decrypted_data)
 
     def encode_mj_file(self, img, output_path):
         img = img.convert('RGB')
         width, height = img.size
-        raw_pixels = bytearray(img.tobytes())
-        encrypted_pixels = bytearray(b ^ SECRET_KEY for b in raw_pixels)
+        
+        buffer = io.BytesIO()
+        img.save(buffer, format='WEBP', lossless=True, quality=100)
+        compressed_bytes = buffer.getvalue()
+        
+        encrypted_pixels = bytearray(b ^ SECRET_KEY for b in compressed_bytes)
         header = struct.pack('>8sII', b'MJFORMAT', width, height)
+        
         with open(output_path, 'wb') as f:
             f.write(header)
             f.write(encrypted_pixels)
@@ -252,7 +270,6 @@ class MJApp(QMainWindow):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # Top Bar
         top_bar = QFrame()
         top_bar.setObjectName("topBar")
         top_layout = QHBoxLayout(top_bar)
@@ -301,7 +318,6 @@ class MJApp(QMainWindow):
         self.btn_zoom_fit.setEnabled(False)
         top_layout.addWidget(self.btn_zoom_fit)
 
-        # Options Menu
         self.btn_menu = QPushButton("⋮ Options")
         self.btn_menu.setStyleSheet("font-size: 15px; font-weight: bold; padding: 5px 14px;")
         
@@ -317,7 +333,6 @@ class MJApp(QMainWindow):
 
         self.options_menu.addSeparator()
 
-        # New Integrated Popup Converter (Supports .mj to .jpg/png/etc & vice versa)
         action_convert = QAction("🔄 Image Converter...", self)
         action_convert.triggered.connect(self.open_converter_dialog)
         self.options_menu.addAction(action_convert)
@@ -392,8 +407,27 @@ class MJApp(QMainWindow):
 
             encrypted_data = f.read()
 
-        decrypted_pixels = bytes(b ^ SECRET_KEY for b in encrypted_data)
-        return Image.frombytes('RGB', (width, height), decrypted_pixels), width, height
+        decrypted_data = bytes(b ^ SECRET_KEY for b in encrypted_data)
+
+        # 1. Try decoding as v1.0.5 WebP Stream
+        try:
+            buffer = io.BytesIO(decrypted_data)
+            img = Image.open(buffer).convert('RGB')
+            return img, width, height
+        except Exception:
+            pass
+
+        # 2. Try decoding as v1.0.4 zlib Compressed Bytes
+        try:
+            raw_pixels = zlib.decompress(decrypted_data)
+            img = Image.frombytes('RGB', (width, height), raw_pixels)
+            return img, width, height
+        except Exception:
+            pass
+
+        # 3. Fallback to v1.0.0 - v1.0.3 Legacy Uncompressed Raw RGB Pixels
+        img = Image.frombytes('RGB', (width, height), decrypted_data)
+        return img, width, height
 
     def open_file_dialog(self):
         file_path, _ = QFileDialog.getOpenFileName(
@@ -579,7 +613,6 @@ class MJApp(QMainWindow):
 
     def check_for_updates(self):
         try:
-            # Bypass GitHub Cache
             cache_url = f"{GITHUB_REPO_URL}?t={int(time.time())}"
             req = urllib.request.Request(cache_url, headers={'User-Agent': 'Mozilla/5.0', 'Cache-Control': 'no-cache'})
             with urllib.request.urlopen(req) as response:
@@ -604,7 +637,6 @@ class MJApp(QMainWindow):
     def perform_auto_update(self):
         try:
             script_path = os.path.realpath(__file__)
-            # Bypass RAW content Cache
             bypass_raw_url = f"{RAW_SCRIPT_URL}?t={int(time.time())}"
             
             req = urllib.request.Request(bypass_raw_url, headers={'User-Agent': 'Mozilla/5.0', 'Cache-Control': 'no-cache'})
